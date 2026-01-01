@@ -274,7 +274,7 @@ function spawn() {
 const cheatCode = ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','KeyZ','KeyZ'];
 let cheatCodeIndex = 0;
 let cheatCodeTimer = 0;
-const CHEAT_CODE_TIMEOUT = 2000; // 2秒以内に入力しないとリセット
+const CHEAT_CODE_TIMEOUT = 5000; // 5秒以内に入力しないとリセット
 
 // ==================== メイン処理 ====================
 document.addEventListener('keydown',e=>{
