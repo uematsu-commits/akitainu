@@ -534,13 +534,18 @@ function draw() {
         ctx.fillStyle='#fff';ctx.textAlign='center';
         if(gameState.state===GAME_STATE.START){
             ctx.font='40px Arial';ctx.fillText('AKITA ADVENTURE',400,250);
-            ctx.font='20px Arial';ctx.fillText(assetManager.isLoaded()?'PRESS ENTER':'LOADING...',400,320);
+            // スマホ用にタッチ指示も追加
+            const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+            ctx.font='20px Arial';
+            ctx.fillText(assetManager.isLoaded()?(isTouchDevice?'TAP TO START':'PRESS ENTER'):'LOADING...',400,320);
         }else if(gameState.state===GAME_STATE.GAME_OVER){
             ctx.font='50px Arial';ctx.fillText('GAME OVER',400,250);
             ctx.font='30px Arial';ctx.fillText('PRESS R TO RETRY',400,320);
         }else{
             ctx.fillStyle='#ff0';ctx.font='50px Arial';ctx.fillText('CLEAR!',400,250);
-            ctx.fillStyle='#fff';ctx.font='30px Arial';ctx.fillText('PRESS ENTER',400,320);
+            const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+            ctx.fillStyle='#fff';ctx.font='30px Arial';
+            ctx.fillText(isTouchDevice?'TAP TO TITLE':'PRESS ENTER',400,320);
         }
         ctx.textAlign='left';
     }
@@ -674,7 +679,23 @@ document.addEventListener('touchstart', (e) => {
             const x = touch.clientX;
             const y = touch.clientY;
             
-            // 画面左上の指定エリア内をタッチしたかチェック
+            // START画面またはGAME_CLEAR画面で画面をタッチしたらゲーム開始/タイトルに戻る
+            if(gameState.state === GAME_STATE.START){
+                if(assetManager.isLoaded()){
+                    soundManager.init();
+                    soundManager.resume();
+                    soundManager.playBGM();
+                    gameState.state = GAME_STATE.PLAYING;
+                }
+                return;
+            }
+            if(gameState.state === GAME_STATE.GAME_CLEAR){
+                reset();
+                gameState.state = GAME_STATE.START;
+                return;
+            }
+            
+            // 画面左上の指定エリア内をタッチしたかチェック（無敵モード用）
             if(x >= TOUCH_CHEAT_AREA.x && x <= TOUCH_CHEAT_AREA.x + TOUCH_CHEAT_AREA.width &&
                y >= TOUCH_CHEAT_AREA.y && y <= TOUCH_CHEAT_AREA.y + TOUCH_CHEAT_AREA.height){
                 touchCheatCount++;

@@ -18,13 +18,45 @@ body {
     background-color: #87ceeb;
     display: block;
     position: relative;
+    max-width: 100vw;
+    max-height: calc(100vh - 150px); /* コントローラーのスペースを確保 */
+}
+
+/* スマホ向けの調整 */
+@media (max-width: 768px) {
+    #gameCanvas {
+        max-height: calc(100vh - 140px); /* スマホではコントローラーのスペースを確保 */
+    }
+    
+    .control-btn {
+        width: 50px;
+        height: 50px;
+        font-size: 18px;
+    }
+    
+    #btn-jump,
+    #btn-attack {
+        width: 70px;
+        height: 50px;
+        font-size: 14px;
+    }
+    
+    #controls-left {
+        bottom: 5px;
+        left: 5px;
+    }
+    
+    #controls-right {
+        bottom: 5px;
+        right: 5px;
+    }
 }
 
 /* スマホ用タッチコントローラー */
 #controls-left {
     position: fixed;
-    left: 20px;
-    bottom: 20px;
+    left: 10px;
+    bottom: 10px;
     display: flex;
     gap: 10px;
     z-index: 1000;
@@ -32,8 +64,8 @@ body {
 
 #controls-right {
     position: fixed;
-    right: 20px;
-    bottom: 20px;
+    right: 10px;
+    bottom: 10px;
     display: flex;
     flex-direction: column;
     gap: 10px;
