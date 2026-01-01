@@ -276,6 +276,12 @@ let cheatCodeIndex = 0;
 let cheatCodeTimer = 0;
 const CHEAT_CODE_TIMEOUT = 5000; // 5秒以内に入力しないとリセット
 
+// スマホ用無敵モード検出用（画面左上を連続タッチ）
+let touchCheatCount = 0;
+let touchCheatTimer = 0;
+const TOUCH_CHEAT_TIMEOUT = 2000; // 2秒以内に5回タッチしないとリセット
+const TOUCH_CHEAT_AREA = { x: 0, y: 0, width: 80, height: 80 }; // 画面左上80x80pxのエリア
+
 // ==================== メイン処理 ====================
 document.addEventListener('keydown',e=>{
     gameState.keys[e.code]=true;
@@ -331,6 +337,13 @@ function update() {
     if(cheatCodeTimer > CHEAT_CODE_TIMEOUT / 1000){
         cheatCodeIndex = 0;
         cheatCodeTimer = 0;
+    }
+    
+    // スマホ用無敵モードのタイマー更新
+    touchCheatTimer += 1/60;
+    if(touchCheatTimer > TOUCH_CHEAT_TIMEOUT / 1000){
+        touchCheatCount = 0;
+        touchCheatTimer = 0;
     }
     
     // 無敵時間の更新（通常の無敵時間）
@@ -506,6 +519,15 @@ function draw() {
             ctx.fillText('INVINCIBLE MODE',10,canvas.height-20);
         }
     }
+    
+    // リトライボタンの表示制御
+    if(btnRetry){
+        if(gameState.state === GAME_STATE.GAME_OVER){
+            btnRetry.classList.add('show');
+        } else {
+            btnRetry.classList.remove('show');
+        }
+    }
     // オーバーレイ
     if([GAME_STATE.START,GAME_STATE.GAME_OVER,GAME_STATE.GAME_CLEAR].includes(gameState.state)){
         ctx.fillStyle='rgba(0,0,0,0.6)';ctx.fillRect(0,0,canvas.width,canvas.height);
@@ -536,5 +558,162 @@ function reset(){
     generateStage();
 }
 assetManager.loadImages(()=>console.log('OK'));
-function loop(){update();draw();requestAnimationFrame(loop);}
+
+// ==================== スマホ用タッチコントローラー ====================
+// ボタン要素の取得
+const btnLeft = document.getElementById('btn-left');
+const btnRight = document.getElementById('btn-right');
+const btnJump = document.getElementById('btn-jump');
+const btnAttack = document.getElementById('btn-attack');
+const btnRetry = document.getElementById('control-retry');
+
+// タッチイベントの処理関数
+function handleTouchStart(e, keyCode) {
+    e.preventDefault();
+    gameState.keys[keyCode] = true;
+    
+    // キーボードイベントと同じ処理を実行
+    if(keyCode === 'Space' && player.onGround && gameState.state === GAME_STATE.PLAYING){
+        player.velocityY = player.jumpPower;
+        player.onGround = false;
+        soundManager.playJump();
+    }
+    if(keyCode === 'KeyZ' && !attackHitbox.active && attackHitbox.cooldownTimer <= 0 && gameState.state === GAME_STATE.PLAYING){
+        attackHitbox.active = true;
+        attackHitbox.timer = 0.15;
+        attackHitbox.cooldownTimer = 0.5;
+        soundManager.playAttack();
+        
+        if(gameState.keys['ArrowUp']){
+            attackHitbox.direction = 'up';
+            attackHitbox.x = player.x + player.width / 2 - attackHitbox.width / 2;
+            attackHitbox.y = player.y - attackHitbox.height;
+        } else {
+            attackHitbox.direction = 'forward';
+            attackHitbox.x = (player.facingDirection === 1) ? player.x + player.width : player.x - attackHitbox.width;
+            attackHitbox.y = player.y + player.height - attackHitbox.height;
+        }
+    }
+    if(keyCode === 'KeyR' && gameState.state === GAME_STATE.GAME_OVER){
+        reset();
+        gameState.state = GAME_STATE.PLAYING;
+        soundManager.playBGM();
+    }
+    if(keyCode === 'Enter' && gameState.state === GAME_STATE.START){
+        if(assetManager.isLoaded()){
+            soundManager.init();
+            soundManager.resume();
+            soundManager.playBGM();
+            gameState.state = GAME_STATE.PLAYING;
+        }
+    }
+    if(keyCode === 'Enter' && gameState.state === GAME_STATE.GAME_CLEAR){
+        reset();
+        gameState.state = GAME_STATE.START;
+    }
+}
+
+function handleTouchEnd(e, keyCode) {
+    e.preventDefault();
+    gameState.keys[keyCode] = false;
+}
+
+// ボタンにタッチイベントを追加
+if(btnLeft){
+    btnLeft.addEventListener('touchstart', (e) => handleTouchStart(e, 'ArrowLeft'), {passive: false});
+    btnLeft.addEventListener('touchend', (e) => handleTouchEnd(e, 'ArrowLeft'), {passive: false});
+    btnLeft.addEventListener('touchcancel', (e) => handleTouchEnd(e, 'ArrowLeft'), {passive: false});
+    // PC用のマウスイベントも追加（テスト用）
+    btnLeft.addEventListener('mousedown', (e) => {e.preventDefault(); handleTouchStart(e, 'ArrowLeft');});
+    btnLeft.addEventListener('mouseup', (e) => {e.preventDefault(); handleTouchEnd(e, 'ArrowLeft');});
+    btnLeft.addEventListener('mouseleave', (e) => {e.preventDefault(); handleTouchEnd(e, 'ArrowLeft');});
+}
+
+if(btnRight){
+    btnRight.addEventListener('touchstart', (e) => handleTouchStart(e, 'ArrowRight'), {passive: false});
+    btnRight.addEventListener('touchend', (e) => handleTouchEnd(e, 'ArrowRight'), {passive: false});
+    btnRight.addEventListener('touchcancel', (e) => handleTouchEnd(e, 'ArrowRight'), {passive: false});
+    btnRight.addEventListener('mousedown', (e) => {e.preventDefault(); handleTouchStart(e, 'ArrowRight');});
+    btnRight.addEventListener('mouseup', (e) => {e.preventDefault(); handleTouchEnd(e, 'ArrowRight');});
+    btnRight.addEventListener('mouseleave', (e) => {e.preventDefault(); handleTouchEnd(e, 'ArrowRight');});
+}
+
+if(btnJump){
+    btnJump.addEventListener('touchstart', (e) => handleTouchStart(e, 'Space'), {passive: false});
+    btnJump.addEventListener('touchend', (e) => handleTouchEnd(e, 'Space'), {passive: false});
+    btnJump.addEventListener('touchcancel', (e) => handleTouchEnd(e, 'Space'), {passive: false});
+    btnJump.addEventListener('mousedown', (e) => {e.preventDefault(); handleTouchStart(e, 'Space');});
+    btnJump.addEventListener('mouseup', (e) => {e.preventDefault(); handleTouchEnd(e, 'Space');});
+    btnJump.addEventListener('mouseleave', (e) => {e.preventDefault(); handleTouchEnd(e, 'Space');});
+}
+
+if(btnAttack){
+    btnAttack.addEventListener('touchstart', (e) => handleTouchStart(e, 'KeyZ'), {passive: false});
+    btnAttack.addEventListener('touchend', (e) => handleTouchEnd(e, 'KeyZ'), {passive: false});
+    btnAttack.addEventListener('touchcancel', (e) => handleTouchEnd(e, 'KeyZ'), {passive: false});
+    btnAttack.addEventListener('mousedown', (e) => {e.preventDefault(); handleTouchStart(e, 'KeyZ');});
+    btnAttack.addEventListener('mouseup', (e) => {e.preventDefault(); handleTouchEnd(e, 'KeyZ');});
+    btnAttack.addEventListener('mouseleave', (e) => {e.preventDefault(); handleTouchEnd(e, 'KeyZ');});
+}
+
+if(btnRetry){
+    btnRetry.addEventListener('touchstart', (e) => handleTouchStart(e, 'KeyR'), {passive: false});
+    btnRetry.addEventListener('touchend', (e) => handleTouchEnd(e, 'KeyR'), {passive: false});
+    btnRetry.addEventListener('touchcancel', (e) => handleTouchEnd(e, 'KeyR'), {passive: false});
+    btnRetry.addEventListener('mousedown', (e) => {e.preventDefault(); handleTouchStart(e, 'KeyR');});
+    btnRetry.addEventListener('mouseup', (e) => {e.preventDefault(); handleTouchEnd(e, 'KeyR');});
+    btnRetry.addEventListener('mouseleave', (e) => {e.preventDefault(); handleTouchEnd(e, 'KeyR');});
+}
+
+// スマホ用無敵モード検出（画面左上を連続タッチ）
+document.addEventListener('touchstart', (e) => {
+    // ボタン以外のタッチをチェック
+    if(!e.target.classList.contains('control-btn')){
+        const touch = e.touches[0] || e.changedTouches[0];
+        if(touch){
+            const x = touch.clientX;
+            const y = touch.clientY;
+            
+            // 画面左上の指定エリア内をタッチしたかチェック
+            if(x >= TOUCH_CHEAT_AREA.x && x <= TOUCH_CHEAT_AREA.x + TOUCH_CHEAT_AREA.width &&
+               y >= TOUCH_CHEAT_AREA.y && y <= TOUCH_CHEAT_AREA.y + TOUCH_CHEAT_AREA.height){
+                touchCheatCount++;
+                touchCheatTimer = 0;
+                
+                // 5回連続タッチで無敵モードを有効化
+                if(touchCheatCount >= 5){
+                    player.invincibleMode = !player.invincibleMode;
+                    touchCheatCount = 0;
+                    touchCheatTimer = 0;
+                    console.log(player.invincibleMode ? '無敵モード ON（タッチ）' : '無敵モード OFF（タッチ）');
+                }
+            } else {
+                // エリア外をタッチしたらリセット
+                touchCheatCount = 0;
+                touchCheatTimer = 0;
+            }
+        }
+    }
+}, {passive: true});
+
+// タッチ操作時の画面拡大・スクロールを防止
+document.addEventListener('touchmove', (e) => {
+    // ボタン上でのタッチ移動は防止
+    if(e.target.classList.contains('control-btn')){
+        e.preventDefault();
+    }
+}, {passive: false});
+
+document.addEventListener('touchend', (e) => {
+    // ボタン上でのタッチ終了は防止
+    if(e.target.classList.contains('control-btn')){
+        e.preventDefault();
+    }
+}, {passive: false});
+
+function loop(){
+    update();
+    draw();
+    requestAnimationFrame(loop);
+}
 loop();
