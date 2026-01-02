@@ -89,6 +89,14 @@ const player = {
     invincibleMode: false // 隠しコマンドによる無敵モード
 };
 
+// ビームエネルギーシステム
+const beamEnergy = {
+    max: 100,
+    current: 100,
+    consumptionRate: 20, // 1秒あたりの消費量
+    recoveryRate: 5 // 1秒あたりの回復量
+};
+
 // ジャンプ・障害物計算
 const MAX_JUMP_HEIGHT = (Math.abs(player.jumpPower) * (-player.jumpPower / player.gravity)) - (0.5 * player.gravity * Math.pow(-player.jumpPower / player.gravity, 2));
 const MAX_OBSTACLE_HEIGHT = MAX_JUMP_HEIGHT * 0.9;
@@ -121,13 +129,13 @@ function generateStage() {
     
     // ゴール手前まで生成
     while (currentX < GOAL_X - 200) {
-        const platformLength = player.width * 3 + Math.random() * 200;
-        platforms.push({ x: currentX, y: GROUND_Y, width: platformLength, height: GROUND_HEIGHT, color: '#808080' });
+        const platformLength = Math.floor(player.width * 3 + Math.random() * 200);
+        platforms.push({ x: Math.floor(currentX), y: GROUND_Y, width: platformLength, height: GROUND_HEIGHT, color: '#808080' });
         currentX += platformLength;
         
-        const gapWidth = Math.min(50 + Math.random() * (MAX_GAP_WIDTH - 50), MAX_GAP_WIDTH);
+        const gapWidth = Math.floor(Math.min(50 + Math.random() * (MAX_GAP_WIDTH - 50), MAX_GAP_WIDTH));
         if (gapWidth > MAX_GAP_WIDTH * 0.6) {
-            platforms.push({ x: currentX + gapWidth/2 - 50, y: GROUND_Y - 100, width: 100, height: 20, color: '#808080' });
+            platforms.push({ x: Math.floor(currentX + gapWidth/2 - 50), y: GROUND_Y - 100, width: 100, height: 20, color: '#808080' });
         }
         currentX += gapWidth;
     }
@@ -138,7 +146,7 @@ function generateStage() {
     // 障害物
     [500, 1200, 2000, 3000, 4000].forEach(pos => {
         if (pos < GOAL_X - 200) {
-            const h = limitObstacleHeight(50 + Math.random() * 100);
+            const h = Math.floor(limitObstacleHeight(50 + Math.random() * 100));
             platforms.push({ x: pos, y: GROUND_Y - h, width: 100, height: h, color: '#808080' });
         }
     });
@@ -207,7 +215,16 @@ class Crow extends Entity {
             const xOffset = -widthDiff / 2;
             const yOffset = -heightDiff / 2;
             
-            ctx.drawImage(img, this.x + xOffset, this.y + yOffset, drawWidth, drawHeight);
+            // 進行方向に合わせて画像を反転（ロジックを反転）
+            ctx.save();
+            if(this.dir === -1){ // 左方向に移動中（反転）
+                ctx.translate(this.x + xOffset + drawWidth, this.y + yOffset);
+                ctx.scale(-1, 1);
+                ctx.drawImage(img, 0, 0, drawWidth, drawHeight);
+            } else { // 右方向に移動中（デフォルト）
+                ctx.drawImage(img, this.x + xOffset, this.y + yOffset, drawWidth, drawHeight);
+            }
+            ctx.restore();
             
             // 当たり判定のサイズは固定値のまま（変更しない）
             // this.width と this.height は固定値（60x60px）を維持
@@ -240,7 +257,16 @@ class Cat extends Entity {
             // 描画時の高さに合わせて当たり判定の高さも更新
             this.height = targetHeight;
             
-            ctx.drawImage(img, this.x, this.y, targetWidth, targetHeight);
+            // 進行方向に合わせて画像を反転（ロジックを反転）
+            ctx.save();
+            if(this.dir === -1){ // 左方向に移動中（反転）
+                ctx.translate(this.x + targetWidth, this.y);
+                ctx.scale(-1, 1);
+                ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+            } else { // 右方向に移動中（デフォルト）
+                ctx.drawImage(img, this.x, this.y, targetWidth, targetHeight);
+            }
+            ctx.restore();
         } else {
             // フォールバック: 色付き矩形
             ctx.fillStyle = this.color;
@@ -262,7 +288,57 @@ class Egg extends Item { get imgKey(){return 'item_egg';} }
 class Yogurt extends Item { get imgKey(){return 'item_yogurt';} }
 class Chicken extends Item { get imgKey(){return 'item_chicken';} }
 
-const enemies=[]; const items=[]; let timer=0;
+const enemies=[]; const items=[]; const beams=[]; let timer=0;
+let beamTimer = 0;
+const BEAM_INTERVAL = 0.5; // 0.5秒間隔でビーム発射
+
+// ビームクラス
+class Beam {
+    constructor(x, y, direction) {
+        this.x = x;
+        this.y = y;
+        this.width = 40;
+        this.height = 16; // 2倍に変更（8 → 16）
+        this.speed = 15;
+        this.direction = direction; // 1: 右, -1: 左
+        this.lifetime = 2.0; // 2秒で消える
+        this.age = 0;
+    }
+    
+    update() {
+        this.x += this.speed * this.direction;
+        this.age += 1/60;
+        // 画面外に出た、または寿命が尽きたら削除
+        if(this.x < gameState.cameraX - 100 || this.x > gameState.cameraX + canvas.width + 100 || this.age >= this.lifetime){
+            return false;
+        }
+        return true;
+    }
+    
+    draw(ctx) {
+        // ビームの描画（水色から黄色へのグラデーション）
+        const gradient = ctx.createLinearGradient(this.x, this.y, this.x + this.width, this.y);
+        gradient.addColorStop(0, '#00ffff');
+        gradient.addColorStop(0.5, '#ffff00');
+        gradient.addColorStop(1, '#ffaa00');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(this.x, this.y, this.width, this.height);
+        
+        // 発光エフェクト
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = '#00ffff';
+        ctx.fillRect(this.x, this.y, this.width, this.height);
+        ctx.shadowBlur = 0;
+    }
+    
+    checkHit(entity) {
+        return this.x < entity.x + entity.width && 
+               this.x + this.width > entity.x && 
+               this.y < entity.y + entity.height && 
+               this.y + this.height > entity.y;
+    }
+}
+
 function spawn() {
     const sx=gameState.cameraX+850;
     if(timer%180===0) (Math.random()<0.5)?enemies.push(new Crow(sx,200+Math.random()*200,sx-200,sx+200)):enemies.push(new Cat(sx,GROUND_Y-40,sx-150,sx+150));
@@ -326,6 +402,8 @@ document.addEventListener('keydown',e=>{
         }
     }
     if(e.code==='KeyR' && gameState.state===GAME_STATE.GAME_OVER){ reset(); gameState.state=GAME_STATE.PLAYING; soundManager.playBGM(); }
+    // デバッグ用：Dキーでスコアを1000に設定
+    if(e.code==='KeyD' && gameState.state===GAME_STATE.PLAYING){ gameState.score=1000; console.log('デバッグ: スコアを1000に設定しました'); }
 });
 document.addEventListener('keyup',e=>gameState.keys[e.code]=false);
 
@@ -373,11 +451,35 @@ function update() {
     
     player.y+=player.velocityY; player.onGround=false;
     
-    // Y軸当たり判定
+    // Y軸当たり判定（足元の判定を面で行う）
+    const FOOT_MARGIN = 10; // 左右10pxの余白
+    const playerFootLeft = player.x + FOOT_MARGIN;
+    const playerFootRight = player.x + player.width - FOOT_MARGIN;
+    const playerFootY = player.y + player.height; // プレイヤーの足元のY座標
+    const playerCenterX = player.x + player.width / 2; // プレイヤーの中心X座標
+    
     platforms.forEach(p=>{
+        // 基本的なAABB判定
         if(player.x<p.x+p.width && player.x+player.width>p.x && player.y<p.y+p.height && player.y+player.height>p.y){
-            if(player.velocityY>0){player.y=p.y-player.height;player.velocityY=0;player.onGround=true;}
-            else{player.y=p.y+p.height;player.velocityY=0;}
+            if(player.velocityY > 0){
+                // 落下中の場合、プレイヤーの足元（余白を考慮）がプラットフォーム上にあるか確認
+                // プレイヤーの足元の左端から右端の間のどこか一箇所でもプラットフォーム上にあれば接地
+                if(playerFootLeft < p.x + p.width && playerFootRight > p.x){
+                    player.y=p.y-player.height;player.velocityY=0;player.onGround=true;
+                }
+            } else if(player.velocityY <= 0){
+                // 静止中または上昇中の場合は、プレイヤーの中心X座標がプラットフォームの範囲内にある場合のみ接地
+                // これにより、隙間の上にいる場合は落下する
+                if(playerCenterX >= p.x && playerCenterX <= p.x + p.width && playerFootY >= p.y && playerFootY <= p.y + p.height + 5){
+                    // 足元もプラットフォーム上にあることを確認（左右の判定も行う）
+                    if(playerFootLeft < p.x + p.width && playerFootRight > p.x){
+                        player.y=p.y-player.height;player.velocityY=0;player.onGround=true;
+                    }
+                }
+            } else {
+                // 上昇中で、プレイヤーの頭がプラットフォームに当たった場合
+                player.y=p.y+p.height;player.velocityY=0;
+            }
         }
     });
     
@@ -387,6 +489,78 @@ function update() {
     // 攻撃
     if(attackHitbox.active){attackHitbox.timer-=1/60;if(attackHitbox.timer<=0){attackHitbox.active=false;player.isAttacking=false;}else player.isAttacking=true;}
     if(attackHitbox.cooldownTimer>0)attackHitbox.cooldownTimer-=1/60;
+    
+    // ビーム発射（Xキーが押されている場合のみ、スコア1000以上または無敵モード時）
+    if(gameState.keys['KeyX'] && (gameState.score >= 1000 || player.invincibleMode)){
+        // ビーム発射中は攻撃画像を表示
+        if(!attackHitbox.active){
+            player.isAttacking = true;
+        }
+        
+        // 無敵モード中はエネルギー消費なし
+        const canShoot = player.invincibleMode || beamEnergy.current > 0;
+        
+        if(canShoot){
+            // beamTimerが0の場合は即座に発射（最初のビームを即座に発射できるように）
+            if(beamTimer === 0){
+                // プレイヤーの口元付近から発射
+                const beamX = player.facingDirection === 1 ? player.x + player.width - 20 : player.x - 20;
+                
+                // ビームのY座標を上下キーで調整（上: 少し上、下: 地べたを這う位置、なし: 少し低め）
+                let beamY;
+                if(gameState.keys['ArrowUp']){
+                    beamY = player.y + player.height / 3 - 8; // 少し上（カラス用）
+                } else if(gameState.keys['ArrowDown']){
+                    beamY = player.y + player.height - 10; // 地べたを這う位置（猫用、地面すれすれ）
+                } else {
+                    beamY = player.y + player.height * 0.65 - 8; // 少し低め（デフォルト、猫に当たりやすく）
+                }
+                
+                beams.push(new Beam(beamX, beamY, player.facingDirection));
+                
+                // エネルギー消費（無敵モード中は消費しない）
+                if(!player.invincibleMode){
+                    beamEnergy.current = Math.max(0, beamEnergy.current - beamEnergy.consumptionRate * (1/60));
+                }
+                // 次の発射までのタイマーを設定
+                beamTimer = BEAM_INTERVAL;
+            } else {
+                beamTimer += 1/60;
+                if(beamTimer >= BEAM_INTERVAL){
+                    beamTimer = 0; // 次のフレームで即座に発射できるように0に戻す
+                }
+            }
+        }
+    } else {
+        // Xキーが離された場合、attackHitboxがアクティブでなければisAttackingをfalseに
+        if(!attackHitbox.active){
+            player.isAttacking = false;
+        }
+        beamTimer = 0; // キーが離された場合はタイマーをリセット
+        // ビームを撃っていない間はエネルギー回復
+        if(!player.invincibleMode){
+            beamEnergy.current = Math.min(beamEnergy.max, beamEnergy.current + beamEnergy.recoveryRate * (1/60));
+        }
+    }
+    
+    // ビームの更新
+    for(let i = beams.length - 1; i >= 0; i--){
+        if(!beams[i].update()){
+            beams.splice(i, 1);
+            continue;
+        }
+        
+        // ビームと敵の当たり判定
+        for(let j = enemies.length - 1; j >= 0; j--){
+            if(beams[i].checkHit(enemies[j])){
+                enemies.splice(j, 1);
+                gameState.score += 200;
+                soundManager.playItemGet();
+                beams.splice(i, 1);
+                break; // このビームは削除されたので、次のビームへ
+            }
+        }
+    }
     
     spawn();
     
@@ -462,6 +636,9 @@ function draw() {
     const glImg=assetManager.getImage('goal');
     if(glImg)ctx.drawImage(glImg,goal.x,goal.y,120,100);else{ctx.fillStyle='#8b4513';ctx.fillRect(goal.x,goal.y,120,100);}
     
+    // ビームの描画（敵より前に描画）
+    beams.forEach(b=>b.draw(ctx));
+    
     enemies.forEach(e=>e.draw(ctx)); items.forEach(i=>i.draw(ctx));
     
     if(player.visible){
@@ -481,13 +658,13 @@ function draw() {
             const yOffset = fixedHeight - drawHeight;
             
             ctx.save();
-            if(player.facingDirection===-1){
+            if(player.facingDirection===-1){ // 左向きの場合（反転）
                 ctx.translate(player.x+targetWidth,player.y);
                 ctx.scale(-1,1);
                 // 左向きの場合、drawImageの第2引数（dy）にオフセットを加算
                 ctx.drawImage(pImg,0,yOffset,targetWidth,drawHeight);
             } else {
-                // 右向きの場合、Y座標にオフセットを加算
+                // 右向きの場合（デフォルト）、Y座標にオフセットを加算
                 ctx.drawImage(pImg,player.x,player.y+yOffset,targetWidth,drawHeight);
             }
             ctx.restore();
@@ -513,6 +690,33 @@ function draw() {
         for(let i=0;i<3;i++){ctx.fillStyle=i<player.life?'#f00':'#555';ctx.fillRect(10+i*30,40,20,20);}
         ctx.font='16px Arial';ctx.fillStyle=soundManager.muted?'#f00':'#0f0';ctx.fillText(soundManager.muted?'MUTE (M)':'SOUND ON (M)',650,30);
         
+        // ビームエネルギーバー（ライフの下に表示）
+        if(gameState.score >= 1000 || player.invincibleMode){
+            const barX = 10;
+            const barY = 70;
+            const barWidth = 150;
+            const barHeight = 15;
+            const energyRatio = beamEnergy.current / beamEnergy.max;
+            
+            // バーの背景（灰色）
+            ctx.fillStyle = '#333';
+            ctx.fillRect(barX, barY, barWidth, barHeight);
+            
+            // エネルギー量（青色）
+            ctx.fillStyle = player.invincibleMode ? '#ffff00' : '#00aaff';
+            ctx.fillRect(barX, barY, barWidth * energyRatio, barHeight);
+            
+            // バーの枠線
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(barX, barY, barWidth, barHeight);
+            
+            // ラベル
+            ctx.fillStyle = '#fff';
+            ctx.font = '12px Arial';
+            ctx.fillText('BEAM', barX, barY - 3);
+        }
+        
         // 無敵モード表示
         if(player.invincibleMode){
             ctx.fillStyle='#ff0';ctx.font='bold 20px Arial';
@@ -534,10 +738,26 @@ function draw() {
         ctx.fillStyle='#fff';ctx.textAlign='center';
         if(gameState.state===GAME_STATE.START){
             ctx.font='40px Arial';ctx.fillText('AKITA ADVENTURE',400,250);
+            
+            // 操作説明
+            ctx.font='18px Arial';
+            ctx.fillStyle='#ffff00';
+            let yPos = 290;
+            ctx.fillText('← → : Move (移動)', 400, yPos);
+            yPos += 25;
+            ctx.fillText('SPACE : Jump (ジャンプ)', 400, yPos);
+            yPos += 25;
+            ctx.fillText('Z : Bite (かみつき)', 400, yPos);
+            yPos += 25;
+            ctx.fillStyle='#ffd700'; // 黄色
+            ctx.fillText('X : 必殺ビーム (1000点ためて発射!)', 400, yPos);
+            ctx.fillStyle='#ffff00'; // 他の行は黄色に戻す
+            
             // スマホ用にタッチ指示も追加
             const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
             ctx.font='20px Arial';
-            ctx.fillText(assetManager.isLoaded()?(isTouchDevice?'TAP TO START':'PRESS ENTER'):'LOADING...',400,320);
+            ctx.fillStyle='#fff';
+            ctx.fillText(assetManager.isLoaded()?(isTouchDevice?'TAP TO START':'PRESS ENTER TO START'):'LOADING...',400,yPos+40);
         }else if(gameState.state===GAME_STATE.GAME_OVER){
             ctx.font='50px Arial';ctx.fillText('GAME OVER',400,250);
             ctx.font='30px Arial';ctx.fillText('PRESS R TO RETRY',400,320);
@@ -560,6 +780,9 @@ function reset(){
     player.invincibleMode=false; // 無敵モードもリセット
     enemies.length=0;
     items.length=0;
+    beams.length=0; // ビームもリセット
+    beamTimer=0;
+    beamEnergy.current=beamEnergy.max; // エネルギーもリセット
     generateStage();
 }
 assetManager.loadImages(()=>console.log('OK'));
