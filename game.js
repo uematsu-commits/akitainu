@@ -290,7 +290,7 @@ class Chicken extends Item { get imgKey(){return 'item_chicken';} }
 
 const enemies=[]; const items=[]; const beams=[]; let timer=0;
 let beamTimer = 0;
-const BEAM_INTERVAL = 0.5; // 0.5秒間隔でビーム発射
+const BEAM_INTERVAL = 0.5; // 0.5秒間隔でrーム発射
 
 // ビームクラス
 class Beam {
@@ -732,6 +732,15 @@ function draw() {
             btnRetry.classList.remove('show');
         }
     }
+    
+    // ビームボタンの表示制御
+    if(btnBeam){
+        if(gameState.state === GAME_STATE.PLAYING && (gameState.score >= 1000 || player.invincibleMode)){
+            btnBeam.classList.add('show');
+        } else {
+            btnBeam.classList.remove('show');
+        }
+    }
     // オーバーレイ
     if([GAME_STATE.START,GAME_STATE.GAME_OVER,GAME_STATE.GAME_CLEAR].includes(gameState.state)){
         ctx.fillStyle='rgba(0,0,0,0.6)';ctx.fillRect(0,0,canvas.width,canvas.height);
@@ -793,6 +802,7 @@ const btnLeft = document.getElementById('btn-left');
 const btnRight = document.getElementById('btn-right');
 const btnJump = document.getElementById('btn-jump');
 const btnAttack = document.getElementById('btn-attack');
+const btnBeam = document.getElementById('btn-beam');
 const btnRetry = document.getElementById('control-retry');
 
 // タッチイベントの処理関数
@@ -882,6 +892,15 @@ if(btnAttack){
     btnAttack.addEventListener('mousedown', (e) => {e.preventDefault(); handleTouchStart(e, 'KeyZ');});
     btnAttack.addEventListener('mouseup', (e) => {e.preventDefault(); handleTouchEnd(e, 'KeyZ');});
     btnAttack.addEventListener('mouseleave', (e) => {e.preventDefault(); handleTouchEnd(e, 'KeyZ');});
+}
+
+if(btnBeam){
+    btnBeam.addEventListener('touchstart', (e) => handleTouchStart(e, 'KeyX'), {passive: false});
+    btnBeam.addEventListener('touchend', (e) => handleTouchEnd(e, 'KeyX'), {passive: false});
+    btnBeam.addEventListener('touchcancel', (e) => handleTouchEnd(e, 'KeyX'), {passive: false});
+    btnBeam.addEventListener('mousedown', (e) => {e.preventDefault(); handleTouchStart(e, 'KeyX');});
+    btnBeam.addEventListener('mouseup', (e) => {e.preventDefault(); handleTouchEnd(e, 'KeyX');});
+    btnBeam.addEventListener('mouseleave', (e) => {e.preventDefault(); handleTouchEnd(e, 'KeyX');});
 }
 
 if(btnRetry){

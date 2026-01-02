@@ -118,6 +118,17 @@ body {
     font-size: 16px;
 }
 
+#btn-beam {
+    width: 80px;
+    height: 60px;
+    font-size: 16px;
+    display: none; /* デフォルトでは非表示 */
+}
+
+#btn-beam.show {
+    display: flex; /* 条件を満たした時だけ表示 */
+}
+
 #control-retry {
     width: 100px;
     height: 50px;
