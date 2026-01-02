@@ -73,10 +73,16 @@ class AssetManager {
 const assetManager = new AssetManager();
 
 // ==================== ゲーム設定 ====================
-const GAME_STATE = { START: 'START', PLAYING: 'PLAYING', GAME_OVER: 'GAME_OVER', GAME_CLEAR: 'GAME_CLEAR' };
-const gameState = { state: GAME_STATE.START, cameraX: 0, keys: {}, score: 0 };
+const GAME_STATE = { START: 'START', PLAYING: 'PLAYING', GAME_OVER: 'GAME_OVER', GAME_CLEAR: 'GAME_CLEAR', STAGE_CLEAR: 'STAGE_CLEAR' };
+const gameState = { state: GAME_STATE.START, cameraX: 0, keys: {}, score: 0, stage: 1 };
 
-const GOAL_X = 5000;
+// ステージに応じたゴール位置を計算する関数
+function getGoalX(stage) {
+    // ステージ1: 3000px, ステージ2: 4000px, ステージ3: 5000px, ステージ4: 6000px, ステージ5: 7000px
+    return 2000 + stage * 1000;
+}
+
+const GOAL_X_BASE = 3000; // 基準値（ステージ1）
 const GROUND_Y = 550;
 const GROUND_HEIGHT = 50;
 
@@ -119,37 +125,69 @@ const attackHitbox = {
 
 function limitObstacleHeight(h) { return Math.min(h, MAX_OBSTACLE_HEIGHT); }
 
-const goal = { x: GOAL_X, y: GROUND_Y - 100, width: 120, height: 100, color: '#8b4513', roofColor: '#654321' };
+let goal = { x: 0, y: GROUND_Y - 100, width: 120, height: 100, color: '#8b4513', roofColor: '#654321' };
 
 // ステージ生成
 let platforms = [];
 function generateStage() {
+    const currentStage = gameState.stage;
+    const GOAL_X = getGoalX(currentStage);
+    
+    // ゴール位置を更新
+    goal.x = GOAL_X;
+    
     platforms = [];
     let currentX = 0;
     
+    // 難易度パラメータ（ステージ1-5で0.0-1.0の範囲）
+    const difficulty = (currentStage - 1) / 4; // ステージ1: 0.0, ステージ5: 1.0
+    
+    // プラットフォームの最小長さ（ステージが上がるほど短く）
+    const minPlatformLength = player.width * 3 - (difficulty * 100); // ステージ1: 360px, ステージ5: 260px
+    const maxPlatformLength = 200 - (difficulty * 50); // ステージ1: 200px, ステージ5: 150px
+    
+    // 穴の幅（ステージが上がるほど広く）
+    const minGapWidth = 50 + (difficulty * 30); // ステージ1: 50px, ステージ5: 80px
+    const maxGapWidth = MAX_GAP_WIDTH * (0.6 + difficulty * 0.3); // ステージ1: 60%, ステージ5: 90%
+    
+    // 穴の出現確率（ステージが上がるほど高い）
+    const gapProbability = 0.5 + (difficulty * 0.3); // ステージ1: 50%, ステージ5: 80%
+    
+    // 障害物の数（ステージが上がるほど多い）
+    const obstacleCount = Math.floor(3 + difficulty * 4); // ステージ1: 3個, ステージ5: 7個
+    
     // ゴール手前まで生成
     while (currentX < GOAL_X - 200) {
-        const platformLength = Math.floor(player.width * 3 + Math.random() * 200);
+        const platformLength = Math.floor(minPlatformLength + Math.random() * maxPlatformLength);
         platforms.push({ x: Math.floor(currentX), y: GROUND_Y, width: platformLength, height: GROUND_HEIGHT, color: '#808080' });
         currentX += platformLength;
         
-        const gapWidth = Math.floor(Math.min(50 + Math.random() * (MAX_GAP_WIDTH - 50), MAX_GAP_WIDTH));
-        if (gapWidth > MAX_GAP_WIDTH * 0.6) {
-            platforms.push({ x: Math.floor(currentX + gapWidth/2 - 50), y: GROUND_Y - 100, width: 100, height: 20, color: '#808080' });
+        // 穴を生成するか判定
+        if (Math.random() < gapProbability) {
+            const gapWidth = Math.floor(Math.min(minGapWidth + Math.random() * (maxGapWidth - minGapWidth), MAX_GAP_WIDTH));
+            // 広い穴の場合は中間に足場を配置
+            if (gapWidth > MAX_GAP_WIDTH * (0.5 + difficulty * 0.2)) {
+                platforms.push({ x: Math.floor(currentX + gapWidth/2 - 50), y: GROUND_Y - 100, width: 100, height: 20, color: '#808080' });
+            }
+            currentX += gapWidth;
+        } else {
+            // 穴を生成しない場合、少し進める
+            currentX += 20;
         }
-        currentX += gapWidth;
     }
     // ゴール付近
     platforms.push({ x: GOAL_X - 300, y: GROUND_Y, width: 300, height: GROUND_HEIGHT, color: '#808080' });
     platforms.push({ x: GOAL_X + 100, y: GROUND_Y, width: 500, height: GROUND_HEIGHT, color: '#808080' });
     
-    // 障害物
-    [500, 1200, 2000, 3000, 4000].forEach(pos => {
-        if (pos < GOAL_X - 200) {
-            const h = Math.floor(limitObstacleHeight(50 + Math.random() * 100));
-            platforms.push({ x: pos, y: GROUND_Y - h, width: 100, height: h, color: '#808080' });
+    // 障害物（ステージに応じて数を調整）
+    const obstacleSpacing = (GOAL_X - 400) / (obstacleCount + 1);
+    for (let i = 1; i <= obstacleCount; i++) {
+        const pos = obstacleSpacing * i + (Math.random() - 0.5) * 200;
+        if (pos > 400 && pos < GOAL_X - 200) {
+            const h = Math.floor(limitObstacleHeight(50 + Math.random() * (50 + difficulty * 50)));
+            platforms.push({ x: Math.floor(pos), y: GROUND_Y - h, width: 100, height: h, color: '#808080' });
         }
-    });
+    }
 }
 generateStage();
 
@@ -166,6 +204,7 @@ class SoundManager {
     playDamage() { this.playTone(150,0.2,'sawtooth'); setTimeout(()=>this.playTone(100,0.2,'sawtooth'),100); }
     playGameOver() { this.playTone(200,0.3,'sawtooth'); setTimeout(()=>this.playTone(150,0.3,'sawtooth'),300); }
     playGameClear() { [523,659,784,1047].forEach((f,i)=>setTimeout(()=>this.playTone(f,0.2),i*150)); }
+    playStageClear() { [523,659,784].forEach((f,i)=>setTimeout(()=>this.playTone(f,0.15),i*100)); } // ステージクリア用のファンファーレ（短い）
     playBGM() {
         if(!this.ready||this.muted)return; this.stopBGM();
         const melody=[{f:523,d:0.2},{f:587,d:0.2},{f:659,d:0.2},{f:523,d:0.2},{f:659,d:0.2},{f:698,d:0.2},{f:784,d:0.4}];
@@ -341,7 +380,17 @@ class Beam {
 
 function spawn() {
     const sx=gameState.cameraX+850;
-    if(timer%180===0) (Math.random()<0.5)?enemies.push(new Crow(sx,200+Math.random()*200,sx-200,sx+200)):enemies.push(new Cat(sx,GROUND_Y-40,sx-150,sx+150));
+    const currentStage = gameState.stage;
+    const difficulty = (currentStage - 1) / 4; // ステージ1: 0.0, ステージ5: 1.0
+    
+    // 敵の出現間隔（ステージが上がるほど短く = 頻繁に）
+    // ステージ1: 180フレーム（3秒）、ステージ5: 90フレーム（1.5秒）
+    const enemySpawnInterval = Math.floor(180 - (difficulty * 90));
+    if(timer % enemySpawnInterval === 0) {
+        (Math.random()<0.5)?enemies.push(new Crow(sx,200+Math.random()*200,sx-200,sx+200)):enemies.push(new Cat(sx,GROUND_Y-40,sx-150,sx+150));
+    }
+    
+    // アイテムの出現間隔はそのまま
     if(timer%120===0) { const t=Math.floor(Math.random()*3); const sy=Math.random()<0.4?GROUND_Y-150:GROUND_Y-30; items.push(t===0?new Egg(sx,sy):t===1?new Yogurt(sx,sy):new Chicken(sx,sy)); }
     timer++;
 }
@@ -379,6 +428,22 @@ document.addEventListener('keydown',e=>{
     
     if(e.code==='Enter' && gameState.state===GAME_STATE.START){ if(assetManager.isLoaded()){soundManager.init();soundManager.resume();soundManager.playBGM();gameState.state=GAME_STATE.PLAYING;} }
     if(e.code==='Enter' && gameState.state===GAME_STATE.GAME_CLEAR){ reset(); gameState.state=GAME_STATE.START; }
+    if(e.code==='Enter' && gameState.state===GAME_STATE.STAGE_CLEAR){
+        // 次のステージへ
+        gameState.stage++;
+        gameState.cameraX = 0;
+        player.x = 100;
+        player.y = GROUND_Y - 120;
+        player.velocityX = 0;
+        player.velocityY = 0;
+        enemies.length = 0;
+        items.length = 0;
+        beams.length = 0;
+        timer = 0;
+        generateStage();
+        soundManager.playBGM();
+        gameState.state = GAME_STATE.PLAYING;
+    }
     if(e.code==='KeyM') {if(soundManager.toggleMute())soundManager.stopBGM();else soundManager.playBGM();}
     if(e.code==='Space' && player.onGround && gameState.state===GAME_STATE.PLAYING){ player.velocityY=player.jumpPower;player.onGround=false;soundManager.playJump(); }
     if(e.code==='KeyZ' && !attackHitbox.active && attackHitbox.cooldownTimer<=0 && gameState.state===GAME_STATE.PLAYING){ 
@@ -408,6 +473,11 @@ document.addEventListener('keydown',e=>{
 document.addEventListener('keyup',e=>gameState.keys[e.code]=false);
 
 function update() {
+    // ステージクリア時の処理
+    if(gameState.state === GAME_STATE.STAGE_CLEAR){
+        // 次のステージに進む処理は、キー入力または一定時間後に自動実行
+        return;
+    }
     if(gameState.state!==GAME_STATE.PLAYING)return;
     
     // 隠しコマンドのタイマー更新（一定時間入力がないとリセット）
@@ -598,7 +668,19 @@ function update() {
         if(it.checkHit(player)){items.splice(i,1);gameState.score+=100;soundManager.playItemGet();}
     }
     
-    if(player.x<goal.x+goal.width && player.x+player.width>goal.x && player.y<goal.y+goal.height && player.y+player.height>goal.y){soundManager.stopBGM();soundManager.playGameClear();gameState.state=GAME_STATE.GAME_CLEAR;}
+    // ゴール判定
+    if(player.x<goal.x+goal.width && player.x+player.width>goal.x && player.y<goal.y+goal.height && player.y+player.height>goal.y){
+        soundManager.stopBGM();
+        if(gameState.stage < 5){
+            // ステージ1-4: ステージクリア
+            soundManager.playStageClear();
+            gameState.state = GAME_STATE.STAGE_CLEAR;
+        } else {
+            // ステージ5: ゲームクリア
+            soundManager.playGameClear();
+            gameState.state = GAME_STATE.GAME_CLEAR;
+        }
+    }
 }
 
 function draw() {
@@ -687,13 +769,14 @@ function draw() {
     // UI
     if(gameState.state===GAME_STATE.PLAYING){
         ctx.fillStyle='#fff';ctx.font='24px Arial';ctx.fillText(`SCORE: ${gameState.score}`,10,30);
-        for(let i=0;i<3;i++){ctx.fillStyle=i<player.life?'#f00':'#555';ctx.fillRect(10+i*30,40,20,20);}
+        ctx.fillText(`STAGE ${gameState.stage}/5`,10,60);
+        for(let i=0;i<3;i++){ctx.fillStyle=i<player.life?'#f00':'#555';ctx.fillRect(10+i*30,75,20,20);}
         ctx.font='16px Arial';ctx.fillStyle=soundManager.muted?'#f00':'#0f0';ctx.fillText(soundManager.muted?'MUTE (M)':'SOUND ON (M)',650,30);
         
         // ビームエネルギーバー（ライフの下に表示）
         if(gameState.score >= 1000 || player.invincibleMode){
             const barX = 10;
-            const barY = 70;
+            const barY = 110;
             const barWidth = 150;
             const barHeight = 15;
             const energyRatio = beamEnergy.current / beamEnergy.max;
@@ -742,10 +825,16 @@ function draw() {
         }
     }
     // オーバーレイ
-    if([GAME_STATE.START,GAME_STATE.GAME_OVER,GAME_STATE.GAME_CLEAR].includes(gameState.state)){
+    if([GAME_STATE.START,GAME_STATE.GAME_OVER,GAME_STATE.GAME_CLEAR,GAME_STATE.STAGE_CLEAR].includes(gameState.state)){
         ctx.fillStyle='rgba(0,0,0,0.6)';ctx.fillRect(0,0,canvas.width,canvas.height);
         ctx.fillStyle='#fff';ctx.textAlign='center';
-        if(gameState.state===GAME_STATE.START){
+        if(gameState.state===GAME_STATE.STAGE_CLEAR){
+            ctx.fillStyle='#ff0';ctx.font='50px Arial';ctx.fillText(`STAGE ${gameState.stage} CLEAR!`,400,250);
+            const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+            ctx.fillStyle='#fff';ctx.font='20px Arial';ctx.fillText('NEXT STAGE...',400,300);
+            ctx.font='18px Arial';
+            ctx.fillText(isTouchDevice?'TAP TO CONTINUE':'PRESS ENTER',400,330);
+        } else if(gameState.state===GAME_STATE.START){
             ctx.font='40px Arial';ctx.fillText('AKITA ADVENTURE',400,250);
             
             // 操作説明
@@ -783,6 +872,7 @@ function draw() {
 function reset(){
     gameState.score=0;
     gameState.cameraX=0;
+    gameState.stage=1; // ステージを1にリセット
     player.x=100;
     player.y=GROUND_Y-120;
     player.life=3;
@@ -848,6 +938,22 @@ function handleTouchStart(e, keyCode) {
     if(keyCode === 'Enter' && gameState.state === GAME_STATE.GAME_CLEAR){
         reset();
         gameState.state = GAME_STATE.START;
+    }
+    if(keyCode === 'Enter' && gameState.state === GAME_STATE.STAGE_CLEAR){
+        // 次のステージへ
+        gameState.stage++;
+        gameState.cameraX = 0;
+        player.x = 100;
+        player.y = GROUND_Y - 120;
+        player.velocityX = 0;
+        player.velocityY = 0;
+        enemies.length = 0;
+        items.length = 0;
+        beams.length = 0;
+        timer = 0;
+        generateStage();
+        soundManager.playBGM();
+        gameState.state = GAME_STATE.PLAYING;
     }
 }
 
@@ -934,6 +1040,23 @@ document.addEventListener('touchstart', (e) => {
             if(gameState.state === GAME_STATE.GAME_CLEAR){
                 reset();
                 gameState.state = GAME_STATE.START;
+                return;
+            }
+            if(gameState.state === GAME_STATE.STAGE_CLEAR){
+                // 次のステージへ
+                gameState.stage++;
+                gameState.cameraX = 0;
+                player.x = 100;
+                player.y = GROUND_Y - 120;
+                player.velocityX = 0;
+                player.velocityY = 0;
+                enemies.length = 0;
+                items.length = 0;
+                beams.length = 0;
+                timer = 0;
+                generateStage();
+                soundManager.playBGM();
+                gameState.state = GAME_STATE.PLAYING;
                 return;
             }
             
